@@ -12,5 +12,5 @@ export default async function Page() {
   }
 
   // If they are not logged in, send them to the login page
-  redirect("/login");
+  redirect("/auth");
 }
