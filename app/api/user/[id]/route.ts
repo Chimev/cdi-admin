@@ -10,7 +10,6 @@ interface RouteParams {
 
 
 export async function GET(req: NextRequest, {params}: RouteParams){
-    console.log('params', params)
      const {id} = await params;
     try {
        await connectToDB()

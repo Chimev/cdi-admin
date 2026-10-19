@@ -31,10 +31,14 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid password");
         }
 
+
+        if (dbUser.role !== "admin") {
+          throw new Error("You are not authorized to access the admin dashboard");
+        }
         // 3. Return object matching the "interface User" you declared
         return {
           id: dbUser._id.toString(),
-          name: dbUser.name,
+          name: `${dbUser.firstName} ${dbUser.lastName}`,
           email: dbUser.email,
           role: dbUser.role, // "user" or "admin"
         //   slug: dbUser.slug,

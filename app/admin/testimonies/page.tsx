@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquareQuote, 
   Plus, 
@@ -8,54 +8,53 @@ import {
   X,
   Edit3,
   Trash2,
-  Save
+  Save,
+  Loader2
 } from 'lucide-react';
 
 export default function TestimoniesPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // API Data State
+  const [testimonies, setTestimonies] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal State
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form State
   const [formTitle, setFormTitle] = useState('');
   const [formAuthor, setFormAuthor] = useState('');
   const [formBody, setFormBody] = useState('');
 
-  // Mock Data (All published)
-  const [testimonies, setTestimonies] = useState([
-    { 
-      id: 1, 
-      title: 'Healing for my Mother', 
-      author: 'David O.', 
-      body: 'I want to thank God for healing my mother after a long illness. The doctors said it would take months, but she was back on her feet in two weeks! Praise God.', 
-      date: 'Sept 18, 2026'
-    },
-    { 
-      id: 2, 
-      title: 'Safe Travels', 
-      author: 'Anonymous', 
-      body: 'Thank God for journey mercies during my trip to Abuja.', 
-      date: 'Sept 15, 2026'
-    },
-    { 
-      id: 3, 
-      title: 'Financial Breakthrough', 
-      author: 'Sarah M.', 
-      body: 'After joining the prayer chain last month, I received a job offer that doubled my previous salary. God is truly faithful to His word!', 
-      date: 'Sept 10, 2026'
-    }
-  ]);
+  // Debounce the search input (waits 500ms after user stops typing)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  // Filter based on search query
-  const filteredTestimonies = testimonies.filter(t => 
-    t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    t.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.body.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Fetch Testimonies on Mount and whenever the debounced search changes
+  useEffect(() => {
+    const fetchTestimonies = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/admin/testimonies?search=${encodeURIComponent(debouncedSearch)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTestimonies(data.testimonies || []);
+        }
+      } catch (error) {
+        console.error('Error fetching testimonies:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchTestimonies();
+  }, [debouncedSearch]);
 
-  // Open Add Modal
   const handleAddClick = () => {
     setEditingId(null);
     setFormTitle('');
@@ -64,52 +63,95 @@ export default function TestimoniesPage() {
     setIsFormModalOpen(true);
   };
 
-  // Open Edit Modal
   const handleEditClick = (testimony: any) => {
-    setEditingId(testimony.id);
+    setEditingId(testimony._id);
     setFormTitle(testimony.title);
-    setFormAuthor(testimony.author);
+    setFormAuthor(testimony.author === 'Anonymous' ? '' : testimony.author);
     setFormBody(testimony.body);
     setIsFormModalOpen(true);
   };
 
-  // Delete Testimony
-  const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this testimony? It will be removed from the mobile app immediately.')) {
-      setTestimonies(testimonies.filter(t => t.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this testimony? It will be removed from the mobile app immediately.')) return;
+
+    try {
+      const res = await fetch(`/api/admin/testimonies/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTestimonies(testimonies.filter(t => t._id !== id));
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to delete testimony.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Network error deleting testimony.');
     }
   };
 
-  // Save (Create or Update)
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     
-    if (editingId) {
-      // Update existing
-      setTestimonies(testimonies.map(t => 
-        t.id === editingId 
-          ? { ...t, title: formTitle, author: formAuthor || 'Anonymous', body: formBody }
-          : t
-      ));
-    } else {
-      // Create new
-      const newTestimony = {
-        id: Date.now(),
-        title: formTitle,
-        author: formAuthor || 'Anonymous',
-        body: formBody,
-        // Format today's date (e.g., Sept 21, 2026)
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      };
-      setTestimonies([newTestimony, ...testimonies]);
+    const payload = {
+      title: formTitle,
+      author: formAuthor.trim() || 'Anonymous',
+      body: formBody
+    };
+
+    try {
+      if (editingId) {
+        // Update existing (PATCH)
+        const res = await fetch(`/api/admin/testimonies/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          setTestimonies(testimonies.map(t => t._id === editingId ? data.testimony : t));
+          setIsFormModalOpen(false);
+        } else {
+          alert(data.message || 'Failed to update testimony.');
+        }
+      } else {
+        // Create new (POST)
+        const res = await fetch('/api/admin/testimonies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          // Add to the front of the list, unless there's an active search filter that might exclude it
+          if (!debouncedSearch) {
+            setTestimonies([data.testimony, ...testimonies]);
+          } else {
+            // Force a refetch to ensure accurate display
+            setDebouncedSearch('');
+            setSearchQuery('');
+          }
+          setIsFormModalOpen(false);
+        } else {
+          alert(data.message || 'Failed to publish testimony.');
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Network error saving testimony.');
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsFormModalOpen(false);
+  };
+
+  // Helper to format date nicely
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -118,7 +160,7 @@ export default function TestimoniesPage() {
         </div>
         <button 
           onClick={handleAddClick}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors"
+          className="bg-[#3a3e98] hover:bg-[#2a2d75] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center shadow-md transition-all"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Testimony
@@ -127,7 +169,6 @@ export default function TestimoniesPage() {
 
       {/* Main Content Card */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        
         {/* Search Toolbar */}
         <div className="border-b border-gray-200 p-4 bg-gray-50 flex justify-between items-center">
           <div className="relative w-full max-w-md">
@@ -137,47 +178,53 @@ export default function TestimoniesPage() {
               placeholder="Search testimonies by title, author, or keyword..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-[#3a3e98] focus:border-[#3a3e98] text-gray-900 bg-white"
             />
           </div>
-          <div className="text-sm text-gray-500 font-medium">
-            {filteredTestimonies.length} Published
+          <div className="text-sm text-[#3a3e98] font-bold">
+            {testimonies.length} Result{testimonies.length !== 1 && 's'}
           </div>
         </div>
 
         {/* Data Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
-            <thead className="bg-white text-gray-500 border-b border-gray-200">
+            <thead className="bg-[#3a3e98] text-white">
               <tr>
-                <th className="px-6 py-3 font-medium uppercase tracking-wider text-xs">Author & Date</th>
-                <th className="px-6 py-3 font-medium uppercase tracking-wider text-xs">Testimony Content</th>
-                <th className="px-6 py-3 font-medium uppercase tracking-wider text-xs text-right">Actions</th>
+                <th className="px-6 py-3 font-bold uppercase tracking-wider text-xs">Author & Date</th>
+                <th className="px-6 py-3 font-bold uppercase tracking-wider text-xs">Testimony Content</th>
+                <th className="px-6 py-3 font-bold uppercase tracking-wider text-xs text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {filteredTestimonies.length > 0 ? (
-                filteredTestimonies.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-16 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#3a3e98]" />
+                  </td>
+                </tr>
+              ) : testimonies.length > 0 ? (
+                testimonies.map((item) => (
+                  <tr key={item._id} className="hover:bg-indigo-50/30 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap align-top pt-5">
                       <p className="font-bold text-gray-900">{item.author}</p>
-                      <p className="text-xs text-gray-500 mt-1">{item.date}</p>
+                      <p className="text-xs text-gray-500 mt-1">{formatDate(item.createdAt)}</p>
                     </td>
                     <td className="px-6 py-4 max-w-xl">
-                      <p className="font-bold text-gray-900 mb-1">{item.title}</p>
-                      <p className="text-gray-600 text-sm leading-relaxed">{item.body}</p>
+                      <p className="font-bold text-[#3a3e98] mb-1">{item.title}</p>
+                      <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{item.body}</p>
                     </td>
                     <td className="px-6 py-4 text-right align-top pt-5 whitespace-nowrap">
                       <button 
                         onClick={() => handleEditClick(item)}
-                        className="inline-flex items-center justify-center p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors mr-2"
+                        className="inline-flex items-center justify-center p-2 text-gray-400 hover:text-[#3a3e98] hover:bg-indigo-50 rounded-lg transition-colors mr-2"
                         title="Edit"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => handleDelete(item.id)}
-                        className="inline-flex items-center justify-center p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        onClick={() => handleDelete(item._id)}
+                        className="inline-flex items-center justify-center p-2 text-gray-400 hover:text-[#f0303b] hover:bg-red-50 rounded-lg transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -190,7 +237,9 @@ export default function TestimoniesPage() {
                   <td colSpan={3} className="px-6 py-16 text-center">
                     <MessageSquareQuote className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <h3 className="text-base font-bold text-gray-900 mb-1">No testimonies found</h3>
-                    <p className="text-gray-500 text-sm">You haven't published any testimonies yet, or none match your search.</p>
+                    <p className="text-gray-500 text-sm">
+                      {debouncedSearch ? "No testimonies match your search query." : "You haven't published any testimonies yet."}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -201,13 +250,13 @@ export default function TestimoniesPage() {
 
       {/* ----------------- ADD / EDIT MODAL ----------------- */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h2 className="text-lg font-bold text-gray-900">
+              <h2 className="text-lg font-bold text-[#3a3e98]">
                 {editingId ? 'Edit Testimony' : 'Publish New Testimony'}
               </h2>
-              <button onClick={() => setIsFormModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setIsFormModalOpen(false)} className="text-gray-400 hover:text-[#f0303b] transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -215,32 +264,32 @@ export default function TestimoniesPage() {
             <form onSubmit={handleSave} className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-5">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Author Display Name</label>
+                  <label className="text-sm font-bold text-gray-700">Author Display Name</label>
                   <input 
                     type="text" 
                     placeholder="e.g. Bro. Victor (Leave blank for Anonymous)"
                     value={formAuthor} 
                     onChange={(e) => setFormAuthor(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-[#3a3e98] focus:border-[#3a3e98] text-gray-900"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Title</label>
+                  <label className="text-sm font-bold text-gray-700">Title</label>
                   <input 
                     type="text" 
                     required 
                     placeholder="e.g. God's Faithfulness"
                     value={formTitle} 
                     onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-[#3a3e98] focus:border-[#3a3e98] text-gray-900"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 flex justify-between">
+                <label className="text-sm font-bold text-gray-700 flex justify-between">
                   <span>Testimony Body</span>
-                  <span className="text-xs text-gray-400 font-normal">This will be visible on the mobile app</span>
+                  <span className="text-xs text-gray-400 font-medium">This will be visible on the mobile app</span>
                 </label>
                 <textarea 
                   required 
@@ -248,7 +297,7 @@ export default function TestimoniesPage() {
                   placeholder="Type the testimony here..."
                   value={formBody} 
                   onChange={(e) => setFormBody(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 leading-relaxed resize-y"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-[#3a3e98] focus:border-[#3a3e98] text-gray-900 leading-relaxed resize-y"
                 ></textarea>
               </div>
 
@@ -256,23 +305,23 @@ export default function TestimoniesPage() {
                 <button 
                   type="button" 
                   onClick={() => setIsFormModalOpen(false)} 
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-[#3a3e98] text-white rounded-lg text-sm font-bold hover:bg-[#2a2d75] transition-all flex items-center shadow-md disabled:opacity-50"
                 >
-                  <Save className="w-4 h-4 mr-2" /> 
-                  {editingId ? 'Update Testimony' : 'Publish to App'}
+                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
+                  {isSubmitting ? 'Saving...' : (editingId ? 'Update Testimony' : 'Publish to App')}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -24,6 +24,7 @@ export const UserProvider = ({ children, id }: UserProviderProps) => {
         email: ''
     });
 
+    console.log('UserProvider id:', id);
 
 
     const fetchUserData = async () => {

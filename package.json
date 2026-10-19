@@ -11,6 +11,8 @@
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
+    "jose": "^6.2.12",
     "lucide-react": "^1.47.0",
     "mongoose": "^9.10.3",
     "next": "16.3.5",
