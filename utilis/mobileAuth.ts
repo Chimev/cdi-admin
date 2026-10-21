@@ -40,6 +40,7 @@ export function formatUser(user: any) {
     lastName: user.lastName,
     email: user.email,
     role: user.role,
+    prayerSlotId: user.prayerSlotId ?? null,
     createdAt: user.createdAt,
   };
 }
