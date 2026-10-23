@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import Event from '@/utilis/models/Event';
-import { deleteCloudinaryImage } from '@/utilis/cloudinary'; // <-- IMPORT YOUR UTILITY
+import { deleteCloudinaryImage } from '@/utilis/cloudinary';
+import { sendPushToAll } from '@/utilis/push';
 
 // PATCH: Update an existing event
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -14,8 +15,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
 
     await connectToDB();
-    const params = await context.params;
-    const { id } = params;
+    const { id } = await context.params;
     
     const body = await req.json();
     const { name, date, startTime, endTime, location, description, image, externalLink, status } = body;
@@ -24,13 +24,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
 
-    // 1. Fetch the existing event FIRST so we can check if the image changed
+    // 1. Fetch the existing event FIRST so we can check what changed
     const existingEvent = await Event.findById(id);
     if (!existingEvent) {
       return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
     }
 
-    // 2. Check if they uploaded a NEW image, and if so, delete the OLD one from Cloudinary
+    const justPublished =
+      existingEvent.status !== 'published' && status === 'published';
+
+    // 2. If a NEW image was uploaded, delete the OLD one from Cloudinary
     if (
       existingEvent.image?.publicId && 
       image?.publicId !== existingEvent.image.publicId
@@ -39,7 +42,6 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
         await deleteCloudinaryImage(existingEvent.image.publicId);
       } catch (cloudinaryError) {
         console.error("Failed to clean up old image on update:", cloudinaryError);
-        // We log the error but don't stop the database update
       }
     }
 
@@ -60,6 +62,25 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       { returnDocument: 'after' } 
     );
 
+    // 4. Notify members only when a draft is published for the first time
+    if (justPublished) {
+      try {
+        const dateText = new Date(updatedEvent.date).toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'UTC',
+        });
+        await sendPushToAll({
+          title: `New event: ${updatedEvent.name}`,
+          body: `${dateText} · ${updatedEvent.location}`,
+          data: { type: 'event', id: updatedEvent._id.toString() },
+        });
+      } catch (error) {
+        console.error('Event push error:', error);
+      }
+    }
+
     return NextResponse.json({ message: 'Event updated successfully!', event: updatedEvent }, { status: 200 });
   } catch (error) {
     console.error('Error updating event:', error);
@@ -76,23 +97,19 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
     }
 
     await connectToDB();
-    const params = await context.params;
-    const { id } = params;
+    const { id } = await context.params;
 
-    // 1. Delete the event from MongoDB and capture the deleted document
     const deletedEvent = await Event.findByIdAndDelete(id);
 
     if (!deletedEvent) {
       return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
     }
 
-    // 2. If the deleted event had an image, destroy it on Cloudinary
     if (deletedEvent.image?.publicId) {
       try {
         await deleteCloudinaryImage(deletedEvent.image.publicId);
       } catch (cloudinaryError) {
         console.error("Failed to delete image from Cloudinary:", cloudinaryError);
-        // Even if Cloudinary fails, the DB document is already deleted, so we return a success response below.
       }
     }
 

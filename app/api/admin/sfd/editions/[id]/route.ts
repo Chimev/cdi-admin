@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import SfdEdition from '@/utilis/models/SfdEdition';
+import { sendPushToAll } from '@/utilis/push';
 
 export async function PATCH(
   req: Request, 
@@ -17,14 +18,20 @@ export async function PATCH(
 
     await connectToDB();
     
-    const params = await context.params;
-    const { id } = params;
-    
+    const { id } = await context.params;
     const { isPublished } = await req.json();
 
     if (typeof isPublished !== 'boolean') {
       return NextResponse.json({ message: 'Invalid status.' }, { status: 400 });
     }
+
+    // Read the current status first, so we know if this is a new publish
+    const existingEdition = await SfdEdition.findById(id);
+    if (!existingEdition) {
+      return NextResponse.json({ message: 'Edition not found.' }, { status: 404 });
+    }
+
+    const justPublished = !existingEdition.isPublished && isPublished;
 
     const updatedEdition = await SfdEdition.findByIdAndUpdate(
       id,
@@ -32,8 +39,16 @@ export async function PATCH(
       { returnDocument: 'after' } 
     );
 
-    if (!updatedEdition) {
-      return NextResponse.json({ message: 'Edition not found.' }, { status: 404 });
+    if (justPublished) {
+      try {
+        await sendPushToAll({
+          title: 'New SFD edition available',
+          body: `${updatedEdition.title} is now available in the CDI app.`,
+          data: { type: 'sfd-edition', id: updatedEdition._id.toString() },
+        });
+      } catch (error) {
+        console.error('Edition push error:', error);
+      }
     }
 
     return NextResponse.json(

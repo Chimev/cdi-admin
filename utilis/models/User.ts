@@ -12,6 +12,7 @@ const UserSchema = new mongoose.Schema({
     default: 'user'
   },
   prayerSlotId: { type: String, default: null }, // e.g. "6-0" = 6:00–6:30 AM
+  pushTokens: { type: [String], default: [] }, // one per phone
 }, { timestamps: true });
 
 export default mongoose.models.User || mongoose.model('User', UserSchema);

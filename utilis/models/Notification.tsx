@@ -18,8 +18,13 @@ const notificationSchema = new Schema(
     },
     status: {
       type: String,
-      default: 'sent', // You can expand this to 'pending' or 'failed' when Expo is integrated
-    }
+      enum: ['sent', 'no-recipients', 'failed'],
+      default: 'sent',
+    },
+    sentCount: {
+      type: Number,
+      default: 0, // how many phones it was delivered to
+    },
   },
   { timestamps: true } 
 );

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import Event from '@/utilis/models/Event';
+ import { sendPushToAll } from "@/utilis/push";
 
 // GET: Fetch all events (with server-side search)
 export async function GET(req: Request) {
@@ -64,7 +65,30 @@ export async function POST(req: Request) {
       status: status || 'published'
     });
 
+    // after the event is saved
+    if (newEvent.status === "published") {
+      try {
+        const dateText = new Date(newEvent.date).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+        await sendPushToAll({
+          title: `New event: ${newEvent.name}`,
+          body: `${dateText} · ${newEvent.location}`,
+          data: { type: "event", id: newEvent._id.toString() },
+        });
+      } catch (error) {
+        console.error("Event push error:", error);
+      }
+    }
+
     return NextResponse.json({ message: 'Event created successfully!', event: newEvent }, { status: 201 });
+
+   
+
+
   } catch (error) {
     console.error('Error creating event:', error);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });

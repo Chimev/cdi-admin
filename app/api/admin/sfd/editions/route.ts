@@ -26,11 +26,10 @@ export async function POST(req: Request) {
       startMonth, 
       endMonth, 
       year, 
-      coverImage, // UPDATED: Extract the object
+      coverImage,
       price 
     } = body;
 
-    // UPDATED: Validate the coverImage object and its internal properties
     if (!title || !startMonth || !endMonth || !year || !coverImage?.url || !coverImage?.publicId || price === undefined) {
       return NextResponse.json(
         { message: 'Missing required fields.' }, 
@@ -38,6 +37,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // New editions start unpublished; members are notified when it's published
     const newEdition = await SfdEdition.create({
       title,
       theme,
