@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import Testimony from '@/utilis/models/Testimony';
+import { sendPushToAll } from '@/utilis/push';
+
+const PREVIEW_LENGTH = 100;
 
 // GET: Fetch all testimonies (with server-side search)
 export async function GET(req: Request) {
@@ -14,11 +17,9 @@ export async function GET(req: Request) {
 
     await connectToDB();
 
-    // Extract search query from URL
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
 
-    // Build the query object
     const query: any = {};
     if (search) {
       query.$or = [
@@ -28,7 +29,6 @@ export async function GET(req: Request) {
       ];
     }
 
-    // Fetch matching testimonies, newest first
     const testimonies = await Testimony.find(query).sort({ createdAt: -1 });
 
     return NextResponse.json({ testimonies }, { status: 200 });
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST: Add a new testimony (Remains unchanged)
+// POST: Add a new testimony and notify members
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -58,6 +58,22 @@ export async function POST(req: Request) {
       author: author || 'Anonymous',
       body,
     });
+
+    try {
+      const text = String(body).trim();
+      const preview =
+        text.length > PREVIEW_LENGTH
+          ? `${text.slice(0, PREVIEW_LENGTH).trim()}...`
+          : text;
+
+      await sendPushToAll({
+        title: `New testimony: ${newTestimony.title}`,
+        body: preview,
+        data: { type: 'testimony', id: newTestimony._id.toString() },
+      });
+    } catch (error) {
+      console.error('Testimony push error:', error);
+    }
 
     return NextResponse.json({ message: 'Testimony published!', testimony: newTestimony }, { status: 201 });
   } catch (error) {
