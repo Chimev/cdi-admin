@@ -2,7 +2,7 @@ import { Expo, ExpoPushMessage } from "expo-server-sdk";
 import { connectToDB } from "@/utilis/connectToDb";
 import User from "@/utilis/models/User";
 
-const expo = new Expo();
+const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
 
 type PushPayload = {
   title: string;
