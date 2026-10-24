@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import Event from '@/utilis/models/Event';
- import { sendPushToAll } from "@/utilis/push";
+ import { notifyAll, sendPushToAll } from "@/utilis/push";
 
 // GET: Fetch all events (with server-side search)
 export async function GET(req: Request) {
@@ -74,10 +74,11 @@ export async function POST(req: Request) {
           day: "numeric",
           timeZone: "UTC",
         });
-        await sendPushToAll({
-          title: `New event: ${newEvent.name}`,
+        await notifyAll({
+          title: `New event: ${newEvent.name}`, // updatedEvent.name in the PATCH route
           body: `${dateText} · ${newEvent.location}`,
-          data: { type: "event", id: newEvent._id.toString() },
+          data: { type: 'event', id: newEvent._id.toString() },
+          type: 'Event Reminder',
         });
       } catch (error) {
         console.error("Event push error:", error);

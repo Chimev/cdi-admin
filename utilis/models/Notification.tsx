@@ -13,7 +13,7 @@ const notificationSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['General Broadcast', 'Event Reminder', 'SFD Update'],
+      enum: ['General Broadcast', 'Event Reminder', 'SFD Update', 'Testimony'],
       required: true,
     },
     status: {
@@ -23,7 +23,11 @@ const notificationSchema = new Schema(
     },
     sentCount: {
       type: Number,
-      default: 0, // how many phones it was delivered to
+      default: 0,
+    },
+    data: {
+      type: Schema.Types.Mixed, // where the app opens on tap, e.g. { type: "event", id }
+      default: {},
     },
   },
   { timestamps: true } 

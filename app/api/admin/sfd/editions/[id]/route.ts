@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import SfdEdition from '@/utilis/models/SfdEdition';
-import { sendPushToAll } from '@/utilis/push';
+import { notifyAll, sendPushToAll } from '@/utilis/push';
 
 export async function PATCH(
   req: Request, 
@@ -41,10 +41,11 @@ export async function PATCH(
 
     if (justPublished) {
       try {
-        await sendPushToAll({
+        await notifyAll({
           title: 'New SFD edition available',
           body: `${updatedEdition.title} is now available in the CDI app.`,
           data: { type: 'sfd-edition', id: updatedEdition._id.toString() },
+          type: 'SFD Update',
         });
       } catch (error) {
         console.error('Edition push error:', error);

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { connectToDB } from '@/utilis/connectToDb';
 import { authOptions } from '@/app/api/auth/[...nextauth]/auth';
 import Testimony from '@/utilis/models/Testimony';
-import { sendPushToAll } from '@/utilis/push';
+import { notifyAll, sendPushToAll } from '@/utilis/push';
 
 const PREVIEW_LENGTH = 100;
 
@@ -66,10 +66,11 @@ export async function POST(req: Request) {
           ? `${text.slice(0, PREVIEW_LENGTH).trim()}...`
           : text;
 
-      await sendPushToAll({
+      await notifyAll({
         title: `New testimony: ${newTestimony.title}`,
         body: preview,
         data: { type: 'testimony', id: newTestimony._id.toString() },
+        type: 'Testimony',
       });
     } catch (error) {
       console.error('Testimony push error:', error);

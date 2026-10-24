@@ -100,6 +100,7 @@ export async function POST(req: Request) {
       type,
       status,
       sentCount,
+      data: TAP_TARGETS[type],
     });
 
     const responseMessage =
